@@ -30,6 +30,14 @@ type StubBuilder struct {
 // This should return the return values recorded by the stub that first
 // matches the given arugments
 func (m *Mock) Called(method string, args ...any) []any {
+	if m.calls == nil {
+		m.calls = make(map[string][]Call)
+	}
+
+	m.calls[method] = append(m.calls[method], Call{
+		args: args,
+	})
+
 	for _, stub := range m.stubs[method] {
 		if len(args) != len(stub.ArgMatchers) {
 			continue
@@ -71,6 +79,9 @@ func (m *Mock) On(method string, args ...any) *StubBuilder {
 }
 
 func (s *StubBuilder) ThenReturn(vals ...any) {
+	if s.mock.stubs == nil {
+		s.mock.stubs = make(map[string][]Stub)
+	}
 	s.mock.stubs[s.method] = append(s.mock.stubs[s.method], Stub{
 		ArgMatchers: s.matchers,
 		Returns:     vals,
@@ -78,5 +89,50 @@ func (s *StubBuilder) ThenReturn(vals ...any) {
 }
 
 func (m *Mock) AssertCalled(t *testing.T, method string, args ...any) {
+	if calls, exists := m.calls[method]; !exists {
+		t.Errorf("No matching method calls for method [%s]", method)
+	} else {
+		for _, call := range calls {
+			if len(args) != len(call.args) {
+				continue
+			}
 
+			matched := true
+			for i, match := range call.args {
+				if match != args[i] {
+					matched = false
+					break
+				}
+			}
+
+			if matched {
+				return
+			}
+		}
+		t.Errorf("No matching calls for method [%s] with arguments %v", method, args)
+	}
+}
+
+func (m *Mock) AssertNumberOfCalls(t *testing.T, method string, numCalls int) {
+	calls, exists := m.calls[method]
+	if !exists {
+		t.Errorf("No matching method %s", method)
+	}
+
+	if len(calls) != numCalls {
+		t.Errorf(`
+			Error with number of calls for method %s
+			Expecting: %d
+			Found: %d
+			`, method, numCalls, len(calls))
+	}
+}
+
+func (m *Mock) AssertNotCalled(t *testing.T, method string) {
+	calls, exists := m.calls[method]
+	if exists {
+		t.Errorf(`
+			Not expecting calls for method %s
+			Found %d calls`, method, len(calls))
+	}
 }
