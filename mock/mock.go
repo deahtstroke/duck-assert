@@ -1,6 +1,7 @@
 package mock
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -26,10 +27,12 @@ type StubBuilder struct {
 	mock     *Mock
 }
 
+type ReturnValues []any
+
 // Records a method call to the mock struct with given arguments
 // This should return the return values recorded by the stub that first
 // matches the given arugments
-func (m *Mock) Called(method string, args ...any) []any {
+func (m *Mock) Called(method string, args ...any) ReturnValues {
 	if m.calls == nil {
 		m.calls = make(map[string][]Call)
 	}
@@ -56,6 +59,28 @@ func (m *Mock) Called(method string, args ...any) []any {
 		}
 	}
 	return nil
+}
+
+func (r ReturnValues) Get(index int) any {
+	if index+1 > len(r) {
+		panic(fmt.Sprintf("Mock: Get: Cannot call Get(%d) because there are %d arguments", index, len(r)))
+	}
+	return r[index]
+}
+
+func (r ReturnValues) Error(index int) error {
+	o := r.Get(index)
+	var e error
+	var ok bool
+
+	if o == nil {
+		return nil
+	}
+
+	if e, ok = o.(error); !ok {
+		panic(fmt.Sprintf("Mock: Error: Error(%d) failed because object wasn't of the correct type: %v", index, o))
+	}
+	return e
 }
 
 // Argument matcher that matches a value exactly
