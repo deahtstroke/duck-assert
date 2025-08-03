@@ -2,6 +2,7 @@ package mock
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 )
 
@@ -19,7 +20,11 @@ type Stub struct {
 	Returns     []any
 }
 
-type ArgMatcher func(arg any) bool
+type anyValueMarker struct{}
+
+var AnyValue = &anyValueMarker{}
+
+type ArgMatcher func(actual any) bool
 
 type StubBuilder struct {
 	method   string
@@ -63,7 +68,7 @@ func (m *Mock) Called(method string, args ...any) ReturnValues {
 
 func (r ReturnValues) Get(index int) any {
 	if index+1 > len(r) {
-		panic(fmt.Sprintf("Mock: Get: Cannot call Get(%d) because there are %d arguments", index, len(r)))
+		panic(fmt.Sprintf("Mock: Get: Cannot call Get(%d) because there's only %d return values", index, len(r)))
 	}
 	return r[index]
 }
@@ -83,23 +88,51 @@ func (r ReturnValues) Error(index int) error {
 	return e
 }
 
-// Argument matcher that matches a value exactly
-// TODO: Support structs and slices
-func MatchExact(this any) ArgMatcher {
-	return func(arg any) bool {
-		return this == arg
-	}
-}
-
 func (m *Mock) On(method string, args ...any) *StubBuilder {
 	matchers := make([]ArgMatcher, len(args))
 	for i, arg := range args {
-		matchers[i] = MatchExact(arg)
+		matchers[i] = buildMatcher(arg)
 	}
 	return &StubBuilder{
 		method:   method,
 		matchers: matchers,
 		mock:     m,
+	}
+}
+
+func buildMatcher(expected any) ArgMatcher {
+	return func(actual any) bool {
+		return deepMatch(actual, expected)
+	}
+}
+
+func deepMatch(actual, expected any) bool {
+	if am, ok := expected.(ArgMatcher); ok {
+		return am(actual)
+	}
+
+	av := reflect.ValueOf(actual)
+	ev := reflect.ValueOf(expected)
+
+	if av.Type() != ev.Type() {
+		return false
+	}
+
+	switch ev.Kind() {
+	case reflect.Struct:
+		for i := 0; i < ev.NumField(); i++ {
+			if fieldInfo := ev.Field(i); !fieldInfo.CanInterface() {
+				continue
+			}
+			expectedField := ev.Field(i).Interface()
+			actualField := ev.Field(i).Interface()
+			if !deepMatch(actualField, expectedField) {
+				return false
+			}
+		}
+		return true
+	default:
+		return reflect.DeepEqual(actual, expected)
 	}
 }
 
@@ -114,17 +147,17 @@ func (s *StubBuilder) ThenReturn(vals ...any) {
 }
 
 func (m *Mock) AssertCalled(t *testing.T, method string, args ...any) {
-	if calls, exists := m.calls[method]; !exists {
+	if stubs, exists := m.stubs[method]; !exists {
 		t.Errorf("No matching method calls for method [%s]", method)
 	} else {
-		for _, call := range calls {
-			if len(args) != len(call.args) {
+		for _, stub := range stubs {
+			if len(args) != len(stub.ArgMatchers) {
 				continue
 			}
 
 			matched := true
-			for i, match := range call.args {
-				if match != args[i] {
+			for i, matcher := range stub.ArgMatchers {
+				if !matcher(args[i]) {
 					matched = false
 					break
 				}

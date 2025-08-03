@@ -4,6 +4,25 @@ import (
 	"testing"
 )
 
+type A struct {
+	B B
+}
+
+type B struct {
+	C C
+}
+
+type C struct {
+	D string
+	E string
+	F string
+	G G
+}
+
+type G struct {
+	h int
+}
+
 type SomeErrorInterface interface {
 	ReturnError() error
 }
@@ -12,11 +31,19 @@ type SomeInterface interface {
 	DoSomething(a string, b string) string
 }
 
+type DeepNestedStructInterface interface {
+	DoSomething(a A) string
+}
+
 type SomeImplementingStruct struct {
 	Mock
 }
 
 type SomeImplementingErrorStruct struct {
+	Mock
+}
+
+type SomeImplementingDeepNestedStruct struct {
 	Mock
 }
 
@@ -28,12 +55,25 @@ type TestErrorStruct struct {
 	dependency SomeErrorInterface
 }
 
+type TestDeepNestedStruct struct {
+	dependency DeepNestedStructInterface
+}
+
 func (t *TestStruct) Call() {
 	t.dependency.DoSomething("Hello", "World")
 }
 
 func (t *TestErrorStruct) Call() {
 	t.dependency.ReturnError()
+}
+
+func (t *TestDeepNestedStruct) Call(a A) {
+	t.dependency.DoSomething(a)
+}
+
+func (s *SomeImplementingDeepNestedStruct) DoSomething(a A) string {
+	args := s.Called("DoSomething", a)
+	return args.Get(0).(string)
 }
 
 func (s *SomeImplementingStruct) DoSomething(a string, b string) string {
@@ -97,4 +137,31 @@ func Test_AssertNotCalled(t *testing.T) {
 	}
 
 	s.AssertNotCalled(t, "DoSomething")
+}
+
+func Test_DeepNestedStructsWithMatchedBy(t *testing.T) {
+	s := new(SomeImplementingDeepNestedStruct)
+	s.On("DoSomething", MatchedBy(func(arg A) bool {
+		return arg.B.C.D == "Hello"
+	})).ThenReturn("Hello World")
+
+	sut := TestDeepNestedStruct{
+		dependency: s,
+	}
+	arg := A{
+		B: B{
+			C: C{
+				D: "Hello",
+				E: "World",
+				F: "!",
+				G: G{
+					h: 1,
+				},
+			},
+		},
+	}
+	sut.Call(arg)
+
+	s.AssertNumberOfCalls(t, "DoSomething", 1)
+	s.AssertCalled(t, "DoSomething", arg)
 }
