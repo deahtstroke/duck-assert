@@ -19,11 +19,6 @@ type Stub struct {
 	ArgMatchers []ArgMatcher
 	Returns     []any
 }
-
-type anyValueMarker struct{}
-
-var AnyValue = &anyValueMarker{}
-
 type ArgMatcher func(actual any) bool
 
 type StubBuilder struct {
@@ -38,6 +33,10 @@ type ReturnValues []any
 // This should return the return values recorded by the stub that first
 // matches the given arugments
 func (m *Mock) Called(method string, args ...any) ReturnValues {
+	if method == "" {
+		panic("No method name was provided")
+	}
+
 	if m.calls == nil {
 		m.calls = make(map[string][]Call)
 	}
@@ -81,7 +80,6 @@ func (r ReturnValues) Error(index int) error {
 	if o == nil {
 		return nil
 	}
-
 	if e, ok = o.(error); !ok {
 		panic(fmt.Sprintf("Mock: Error: Error(%d) failed because object wasn't of the correct type: %v", index, o))
 	}
