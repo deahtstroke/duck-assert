@@ -77,7 +77,7 @@ type Call struct {
 }
 ```
 
-Every time `Called(...)` is triggered, a Call is recorded.
+Every time `Called(...)` is triggered, a `Call` is recorded.
 
 ___
 
